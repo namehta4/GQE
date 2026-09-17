@@ -5,6 +5,15 @@ Transformer Models* (arXiv:2607.22468), using LAMMPS+MACE-OFF for MD,
 `cudaq-solvers` for ADAPT-VQE, and a from-scratch Gemma 3 model (Nemotron
 path and container image intentionally out of scope).
 
+**Automated runner available:** `orchestrator/run_pipeline.py` drives every
+stage below from a single YAML config (`orchestrator/config.example.yaml`),
+with resume/skip, retries, a smoke-test-before-full-run pattern for the two
+most expensive stages, and adaptive self-distillation stopping based on
+validation-loss improvement rather than a fixed round count. The manual
+commands below are still the ground truth for what each stage actually does
+and are useful for running a single stage by hand or debugging a failure the
+orchestrator hit.
+
 **Nothing in this pipeline has been executed end-to-end.** Every stage was
 built from documentation, the actual shipped source of `cudaq-solvers`, and
 careful reasoning, but this environment has no LAMMPS+MACE build, no CUDA-Q

@@ -153,10 +153,27 @@ def run_training_loop(
                                 f"Early stopping: no val-loss improvement for "
                                 f"{patience} evaluations (best={best_val_loss:.4f})"
                             )
+                            _write_metrics(output_dir, best_val_loss, global_step, True)
                             return best_val_loss
 
     print(f"Training complete. Best val_loss={best_val_loss:.4f}")
+    _write_metrics(output_dir, best_val_loss, global_step, False)
     return best_val_loss
+
+
+def _write_metrics(output_dir, best_val_loss, global_step, stopped_early):
+    """Machine-readable training result, so external tooling (e.g. an
+    orchestrator deciding whether another self-distillation round is worth
+    running) doesn't have to scrape stdout."""
+    with open(os.path.join(output_dir, "metrics.json"), "w") as f:
+        json.dump(
+            {
+                "best_val_loss": best_val_loss,
+                "global_step": global_step,
+                "stopped_early": stopped_early,
+            },
+            f,
+        )
 
 
 @torch.no_grad()

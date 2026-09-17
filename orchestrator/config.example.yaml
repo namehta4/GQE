@@ -1,0 +1,74 @@
+# Example orchestrator config for one full ADAPT-GQE run.
+# See PIPELINE.md for what each parameter corresponds to.
+
+workdir: /path/to/adapt_gqe_run   # all outputs land here
+
+molecule:
+  smiles: "CN(C)CCCN1c2ccccc2CCc2ccccc21"   # imipramine
+  element_order: [C, H, N]
+
+lammps:
+  device: cuda
+  mace_model: small
+  md_nprocs: 8
+  md_strides: [10, 10, 10, 10, 5]   # one per MD trajectory (paper: 4x stride-10, 1x stride-5)
+  refs15_n_confs: 500
+  refs15_cluster_rms_thresh: 1.2
+  refs122_n_confs: 2000
+  refs122_cluster_rms_thresh: 0.5
+  n_ood_perturbations: 200
+  # NEB is OFF by default -- it needs an MPI-partition-aware Python driver
+  # for the ML-IAP MACE model that does not exist yet (see
+  # lammps_md/neb_template.in's "NOT YET RESOLVED" note). Turning this on
+  # before that driver exists will just fail the neb_run stage.
+  include_neb: false
+  # lammps_bin: lmp
+  # neb_n_images: 30
+
+# One entry per row of PIPELINE.md's Section 3 table. pool_size MUST be
+# filled in from a real run's printed "Operator pool 'X': N candidate
+# operators" line (chemistry/run_adapt_vqe.py or build_adapt_vqe_dataset.py)
+# -- it depends on the active space and isn't knowable in advance.
+dataset_configs:
+  - name: 12q_eps5
+    n_active_electrons: 6
+    n_active_orbitals: 6
+    pool: uccgsd
+    reference: casci
+    tolerance_mha: 5.0
+    pool_size: 500   # PLACEHOLDER -- replace with the real printed value
+    model:
+      hidden_size: 1024
+      num_layers: 16
+      num_heads: 8
+      num_kv_heads: 8
+      context_length: 1024
+      sliding_window: 1024
+      epochs: 20
+      batch_size: 8
+      lr: 4.0e-5
+
+  - name: 12q_eps10
+    n_active_electrons: 6
+    n_active_orbitals: 6
+    pool: uccgsd
+    reference: casci
+    tolerance_mha: 10.0
+    pool_size: 500   # PLACEHOLDER
+
+  # Add 14q_eps5 / 14q_eps16 (6e,7o, uccgsd) and 16q_eps15 (8e,8o, uccsd,
+  # reference: ccsd) the same way to reproduce all five paper datasets.
+
+generation:
+  num_candidates: 16
+  max_new_tokens: 600
+  top_p: 0.95
+
+self_distillation:
+  enabled: true
+  max_rounds: 3          # cap; adaptive stopping usually exits earlier
+  val_loss_improvement_threshold: 0.01
+  rl_epochs_schedule: [2, 3, 4]
+  rl_lr_schedule: [4.0e-6, 3.0e-6, 2.0e-6]
+  distill_topn_schedule: [8, 4, 2]
+  distill_threshold_mha_schedule: [5.0, 3.4, 1.6]
