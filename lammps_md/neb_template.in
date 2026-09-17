@@ -1,0 +1,78 @@
+# ============================================================
+# LAMMPS NEB input: transition-pathway sampling between a pair
+# of reference conformers, using the MACE-OFF potential.
+#
+# One template, reused for every conformer pair via -var overrides
+# (same pattern as md_imipramine.in / run_md_ensemble.sh).
+#
+# Run as a multi-partition job, one partition per image:
+#   mpirun -np <n_images * procs_per_image> lmp \
+#       -partition <n_images>x<procs_per_image> \
+#       -in neb_template.in \
+#       -var init_data   conformer_i.data \
+#       -var final_coords pair_i_j/final_coords.txt \
+#       -var out_prefix  pair_i_j/pair
+#
+# IMPORTANT: the `neb` command's final-coordinates file format, and the
+# fix-neb / min_style combination, have been stable across LAMMPS releases
+# for years but this template has not been validated against a live LAMMPS
+# build in this environment. Before running at scale, sanity-check it
+# against the `examples/neb` directory shipped with YOUR LAMMPS install.
+#
+# NOT YET RESOLVED: MACE-OFF is wired in via ML-IAP "unified"
+# (mace_mliap_unified.py), which is a Python object needing registration
+# before the input script runs (see md_imipramine.in / run_md_python_driver.py
+# for the single-process pattern). NEB's `-partition NxM` launches N separate
+# LAMMPS processes simultaneously, so the same registration needs to happen
+# once per partition rank -- an MPI-partition-aware Python driver for this
+# (analogous to run_md_python_driver.py but wrapping the `mpirun -partition`
+# launch) has NOT been written yet. prepare_neb_pairs.py's generated launcher
+# still invokes `lmp -partition ...` directly, which will not have MACE
+# available until that driver exists.
+# ============================================================
+
+variable init_data    index conformer_i.data
+variable final_coords index conformer_j.neb_final.txt
+variable out_prefix   index pair
+
+variable kspring equal 1.0      # NEB spring constant, eV/Ang^2 -- tune per system
+variable etol    equal 1.0e-6
+variable ftol    equal 1.0e-4
+variable n1      equal 2000     # steps of plain minimization before NEB coupling kicks in
+variable n2      equal 4000     # steps of coupled NEB minimization
+variable nevery  equal 20       # thermo/dump/convergence-check frequency
+
+units        metal
+dimension    3
+boundary     s s s
+atom_style   atomic
+atom_modify  map array sort 0 0.0   # `fix neb` correlates atoms across replicas by atom-ID;
+                                     # an atom map is required for this to work correctly
+
+read_data    ${init_data}           # SAME initial (reactant) structure read by every replica --
+                                     # the `neb` command below linearly interpolates the
+                                     # intermediate images and overwrites the LAST replica's
+                                     # coordinates with ${final_coords}
+
+# MACE-OFF via ML-IAP "unified" -- see the NOT YET RESOLVED note above.
+pair_style   mliap unified
+pair_coeff   * * C H N   # <-- match the element order used throughout the pipeline
+
+neighbor      2.0 bin
+neigh_modify  every 1 delay 0 check yes
+
+fix          f_neb all neb ${kspring}
+
+min_style    fire
+timestep     0.001
+
+thermo       ${nevery}
+thermo_style custom step temp pe fmax fnorm
+
+variable     img equal part
+dump         d_neb all custom ${nevery} ${out_prefix}_image_${img}.lammpstrj id type x y z
+dump_modify  d_neb sort id first yes
+
+neb          ${etol} ${ftol} ${n1} ${n2} ${nevery} final ${final_coords}
+
+write_dump   all custom ${out_prefix}_image_${img}_final.lammpstrj id type x y z

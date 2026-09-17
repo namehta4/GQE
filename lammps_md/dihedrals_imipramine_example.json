@@ -1,0 +1,14 @@
+{
+  "_README": "Atom-index tuples from Fig. 1a of ADAPT-GQE (arXiv:2607.22468). ONLY valid if your atom ordering matches the paper's Fig. 15 geometry (heavy atoms indexed 0-20 in that exact traversal order). If you built your geometry via mol_to_lammps_data.py --smiles, RDKit's atom ordering will almost certainly differ -- inspect your own <output>.idx.txt and redefine these tuples for your actual indices before trusting this file.",
+  "dihedrals": [
+    [3, 0, 2, 9],
+    [4, 0, 2, 9],
+    [19, 1, 10, 9],
+    [20, 1, 10, 9],
+    [0, 2, 9, 10],
+    [2, 9, 10, 1],
+    [3, 7, 5, 6],
+    [7, 5, 6, 8],
+    [5, 6, 8, 4]
+  ]
+}

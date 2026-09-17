@@ -1,0 +1,83 @@
+# ============================================================
+# LAMMPS input: gas-phase NVT MD sampling of imipramine
+# conformers using the MACE-OFF foundation potential.
+#
+# Reproduces the sampling protocol of ADAPT-GQE (arXiv:2607.22468):
+#   - NVT ensemble, Langevin thermostat
+#   - T = 360 K, friction coefficient gamma = 1 ps^-1
+#   - timestep = 0.25 fs
+#   - 20,000,000 steps per trajectory
+#   - 5 independent trajectories differing only by random seed
+#
+# Launch via run_md_python_driver.py, NOT `lmp -in` directly -- MACE-OFF is
+# wired in through LAMMPS's ML-IAP "unified" Python interface
+# (mace_mliap_unified.py), which is a Python OBJECT that must be registered
+# with the lammps() instance before this script runs, not a compiled
+# pair_style. See mace_mliap_unified.py's VALIDATION WARNING before trusting
+# this integration:
+#   python run_md_python_driver.py \
+#       --seed 12345 --run-label traj0 \
+#       --data-file imipramine.data --element-order C H N \
+#       --mace-model small --device cuda
+# ============================================================
+
+# ---------------- variables (set by run_md_python_driver.py before lmp.file()) ----------------
+variable seed       index   12345               # RNG seed for this trajectory (unique per replicate)
+variable run_label  index   traj0               # label used in output filenames
+variable data_file  index   imipramine.data     # LAMMPS data file (atomic style, isolated molecule)
+
+variable T          equal   360.0               # temperature, K
+variable gamma      equal   1.0                 # friction coefficient, ps^-1 (paper value)
+variable damp       equal   1.0/${gamma}         # LAMMPS langevin damping time, ps
+variable dt         equal   0.00025             # timestep, ps (= 0.25 fs)
+variable nsteps     equal   20000000            # steps per trajectory
+variable dump_every equal   1000                # save a frame every 1000 steps (0.25 ps)
+                                                  # -> subsample offline per the paper's
+                                                  #    "every 10th" / "5th and 10th" schemes
+
+# ---------------- units / box / atoms ----------------
+units        metal          # MACE-OFF is trained in eV / Angstrom / ps
+dimension    3
+boundary     s s s          # shrink-wrapped, non-periodic: isolated gas-phase molecule
+atom_style   atomic         # MACE needs only element (via type) + position, no bonded topology
+atom_modify  sort 0 0.0     # IMPORTANT: disable atom sorting so dump order == data-file order,
+                             # preserving the atom-index scheme used for dihedral definitions
+                             # and downstream PySCF active-space construction
+
+read_data    ${data_file}
+
+# ---------------- potential ----------------
+# MACE-OFF via LAMMPS ML-IAP "unified" (mace_mliap_unified.py), NOT a
+# compiled pair_style mace plugin -- see that file's VALIDATION WARNING.
+# The model itself is a Python object registered by run_md_python_driver.py
+# BEFORE this script runs; there is no model-file argument here.
+# pair_coeff's element order MUST match mace_mliap_unified.py's
+# element_types AND the Masses section order in ${data_file}.
+pair_style   mliap unified
+pair_coeff   * * C H N   # <-- set to your actual per-type element order
+
+neighbor      2.0 bin
+neigh_modify  every 1 delay 0 check yes
+
+# ---------------- integrator / thermostat ----------------
+timestep     ${dt}
+
+velocity     all create ${T} ${seed} dist gaussian mom yes rot yes
+
+fix          f_nve   all nve
+fix          f_lang  all langevin ${T} ${T} ${damp} ${seed} zero yes
+fix          f_recenter all recenter INIT INIT INIT units box
+                             # keeps the isolated molecule from drifting out of the
+                             # shrink-wrapped box over 20M steps of Langevin dynamics
+
+# ---------------- output ----------------
+thermo       10000
+thermo_style custom step temp pe ke etotal
+
+dump         d_traj all custom ${dump_every} ${run_label}.lammpstrj id type x y z
+dump_modify  d_traj sort id first yes   # enforce fixed, ascending atom-id ordering per frame
+
+# ---------------- run ----------------
+run          ${nsteps}
+
+write_data   ${run_label}_final.data

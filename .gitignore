@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+venv/
+
+# OS
+.DS_Store
+
+# Generated pipeline artifacts (created by running the scripts, not source)
+runs/
+*.lammpstrj
+refs_15/
+refs_122/
+neb_runs/
+neb_dataset/
+ood_dataset/
+full_dataset/
+adaptvqe_*/
+hamiltonians_*/
+training_examples_*/
+checkpoints_*/
+rl_checkpoints_*/
+distill_*/
+generated_*.jsonl
+best_of_n_*.jsonl
+*.npz
+*.npy
+term_order_*.json
