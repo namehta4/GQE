@@ -8,6 +8,9 @@ venv/
 # OS
 .DS_Store
 
+# Reference paper (not for redistribution via this repo)
+adaptGQE.pdf
+
 # Generated pipeline artifacts (created by running the scripts, not source)
 runs/
 *.lammpstrj
