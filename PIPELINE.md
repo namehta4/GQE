@@ -2,8 +2,9 @@
 
 Reproduces the pipeline in *Learning to Prepare Molecular Ground States with
 Transformer Models* (arXiv:2607.22468), using LAMMPS+MACE-OFF for MD,
-`cudaq-solvers` for ADAPT-VQE, and a from-scratch Gemma 3 model (Nemotron
-path and container image intentionally out of scope).
+`cudaq-solvers` for ADAPT-VQE, and a from-scratch Gemma 3 model. Nemotron
+(the paper's second, pretrained-LLM model) remains out of scope. A merged
+container image for NERSC Perlmutter is available at `docker/Dockerfile`.
 
 **Automated runner available:** `orchestrator/run_pipeline.py` drives every
 stage below from a single YAML config (`orchestrator/config.example.yaml`),
@@ -25,21 +26,35 @@ at real scale — it consolidates every flagged risk into one place.
 
 ## 0. One-time setup (per environment, not per molecule)
 
-1. Build LAMMPS with the `ML-MACE` package against libtorch (see
-   `lammps_md/md_imipramine.in` header comment).
-2. Export a MACE-OFF checkpoint to TorchScript for the LAMMPS `pair_style
-   mace` plugin (separate from the Python-side `mace.calculators.mace_off`
-   used elsewhere in this pipeline for relaxation — same underlying model,
-   different loading path).
-3. Install: `ase`, `rdkit`, `mace-torch`, `pyscf`, `openfermion`,
+**If you're using `docker/Dockerfile`** (built on Perlmutter per that file's
+own instructions), steps 1-3 below are already done for you — it builds
+LAMMPS with ML-IAP, `cudaq`/`cudaq-solvers`, `pytket`, `rdkit`, `ase`, and
+`mace-torch` from source, and copies this repo's code into
+`/opt/adapt-gqe`. Skip straight to step 4 — the image gives you an
+environment *capable* of running that test, it does not run it for you.
+
+1. Build LAMMPS with `PKG_ML-IAP` + `MLIAP_ENABLE_PYTHON` (see
+   `docker/Dockerfile`'s LAMMPS build stage). MACE-OFF is wired in via
+   `lammps_md/mace_mliap_unified.py`, LAMMPS's ML-IAP "unified" Python
+   interface — NOT a compiled `pair_style mace` plugin (an earlier, now
+   superseded plan). See that file's VALIDATION WARNING: this integration
+   is an untested draft, not a confirmed-working one.
+2. Install: `ase`, `rdkit`, `mace-torch`, `pyscf`, `openfermion`,
    `cudaq`, `cudaq-solvers`, `pytket`, `torch`, `transformers`,
-   `numpy`, `matplotlib`. (See the earlier container-dependency discussion
-   for the full list and the CUDA-version compatibility warning across
-   libtorch/PyTorch/CUDA-Q.)
+   `numpy`, `matplotlib`, `pyyaml` (for the orchestrator). See
+   `docker/Dockerfile` for the full, version-pinned list and the
+   CUDA-version compatibility notes across libtorch/PyTorch/CUDA-Q.
+3. `python lammps_md/run_md_python_driver.py` (not `lmp -in` directly) is
+   how MD runs now, since ML-IAP "unified" potentials are Python objects
+   that must be registered with a running `lammps` instance before the
+   input script executes.
 4. **Run `chemistry/test_circuit_energy.py` and confirm it passes.**
    Everything from Section 4 onward (RL, evaluation, benchmarking, hardware)
    depends on `chemistry/circuit_energy.py` being correct. Do not proceed
-   past Section 3 until this passes.
+   past Section 3 until this passes. Separately, before trusting any real
+   MD/NEB run: validate `mace_mliap_unified.py` on a tiny system per its own
+   docstring — a container that builds successfully says nothing about
+   whether that integration actually produces correct forces.
 
 ---
 
